@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/getsentry/sentry-go"
 	"io"
 	"mime"
 	"net"
@@ -14,6 +13,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/getsentry/sentry-go"
 
 	"github.com/alioygur/is"
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,7 +42,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Host = r.Header.Get("X-Forwarded-Host")
 		isUsingForwardedHost = true
 	}
-	r.Host = strings.Split(r.Host, ":")[0]
 
 	var raddr string
 	if config.Get().General.TrustAnyForward {
@@ -245,7 +245,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}).Inc()
 		w.Header().Set("Cache-Control", "private, max-age=259200") // 3 days
 		w.Header().Set("Content-Type", "text/html; charset=UTF-8")
-		w.Header().Set("Content-Security-Policy", "") // We're serving HTML, so take away the CSP
+		w.Header().Set("Content-Security-Policy", "")   // We're serving HTML, so take away the CSP
 		w.Header().Set("X-Content-Security-Policy", "") // We're serving HTML, so take away the CSP
 		io.Copy(w, bytes.NewBuffer([]byte(result.HTML)))
 		return
