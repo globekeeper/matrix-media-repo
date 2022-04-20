@@ -9,6 +9,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 *Nothing yet.*
 
+## [1.2.12] - March 31, 2022
+
+### Fixed
+
+* Fixed a permissions check issue on the new statistics endpoint released in v1.2.11
+
+## [1.2.11] - March 31, 2022
+
+### Added
+
+* New config option to set user agent when requesting URL previews.
+* Added support for `image/jxl` thumbnailing.
+* Built-in early support for content ranges (being able to skip around in audio and video). This is only available if
+  caching is enabled.
+* New config option for changing the log level.
+* New (currently undocumented) binary `s3_consistency_check` to find objects in S3 which *might* not be referenced by
+  the media repo database. Note that this can include uploads in progress.
+* Admin endpoint to GET users' usage statistics for a server.
+
+### Removed
+
+* Support for the in-memory cache has been removed. Redis or having no cache are now the only options.
+* Support for the Redis config under `features` has been removed. It is now only available at the top level of the
+  config. See the sample config for more details.
+
+### Fixed
+
+* Fixed media being permanently lost when transferring to an (effectively) readonly S3 datastore.
+* Purging non-existent files now won't cause errors.
+* Fixed HEIF/HEIC thumbnailing. Note that this thumbnail type might cause increased memory usage.
+* Ensure endpoints register in a stable way, making them predictably available.
+* Reduced download hits to datastores when using Redis cache.
+
+### Changed
+
+* Updated support for post-[MSC3069](https://github.com/matrix-org/matrix-doc/pull/3069) homeservers.
+* Updated the built-in oEmbed `providers.json`
+
 # [1.2.10] - December 23rd, 2021
 
 ### Deprecation notices
@@ -323,7 +361,9 @@ a large database (more than about 100k uploaded files), run the following steps 
 * Various other features that would be expected like maximum/minimum size controls, rate limiting, etc. Check out the
   sample config for a better idea of what else is possible.
 
-[unreleased]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.10...HEAD
+[unreleased]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.12...HEAD
+[1.2.12]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.11...v1.2.12
+[1.2.11]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.10...v1.2.11
 [1.2.10]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.9...v1.2.10
 [1.2.9]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.8...v1.2.9
 [1.2.8]: https://github.com/turt2live/matrix-media-repo/compare/v1.2.7...v1.2.8

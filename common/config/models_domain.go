@@ -31,8 +31,9 @@ type DatastoreConfig struct {
 }
 
 type DownloadsConfig struct {
-	MaxSizeBytes        int64 `yaml:"maxBytes"`
-	FailureCacheMinutes int   `yaml:"failureCacheMinutes"`
+	MaxSizeBytes               int64 `yaml:"maxBytes"`
+	FailureCacheMinutes        int   `yaml:"failureCacheMinutes"`
+	DefaultRangeChunkSizeBytes int64 `yaml:"defaultRangeChunkSizeBytes"`
 }
 
 type ThumbnailsConfig struct {
@@ -64,6 +65,7 @@ type UrlPreviewsConfig struct {
 	AllowedNetworks    []string `yaml:"allowedNetworks,flow"`
 	UnsafeCertificates bool     `yaml:"previewUnsafeCertificates"`
 	DefaultLanguage    string   `yaml:"defaultLanguage"`
+	UserAgent          string   `yaml:"userAgent"`
 	OEmbed             bool     `yaml:"oEmbed"`
 }
 
