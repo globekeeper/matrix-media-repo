@@ -120,7 +120,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"action": h.action,
 			"method": r.Method,
 		}).Inc()
-		contextLog.Warn("The server name provided in the Host header is not configured, or the request was made directly to the media repo instead of through your reverse proxy. This request is being rejected.")
+		contextLog.WithField("host", r.Host).Warn("The server name provided in the Host header is not configured, or the request was made directly to the media repo instead of through your reverse proxy. This request is being rejected.")
 	}
 	if res == nil {
 		res = api.InternalServerError("Error processing response")
