@@ -2,21 +2,21 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"sort"
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/util/cleanup"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type runtimeConfig struct {
-	MigrationsPath string
-	TemplatesPath  string
-	AssetsPath     string
+	MigrationsPath  string
+	TemplatesPath   string
+	AssetsPath      string
+	IsImportProcess bool
 }
 
 const DefaultMigrationsPath = "./migrations"
@@ -34,7 +34,7 @@ func reloadConfig() (*MainRepoConfig, map[string]*DomainRepoConfig, error) {
 	domainConfs := make(map[string]*DomainRepoConfig)
 
 	// Write a default config if the one given doesn't exist
-	info, err := os.Stat(Path)
+	_, err := os.Stat(Path)
 	exists := err == nil || !os.IsNotExist(err)
 	if !exists {
 		fmt.Println("Generating new configuration...")
@@ -60,7 +60,7 @@ func reloadConfig() (*MainRepoConfig, map[string]*DomainRepoConfig, error) {
 	}
 
 	// Get new info about the possible directory after creating
-	info, err = os.Stat(Path)
+	info, err := os.Stat(Path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -69,12 +69,15 @@ func reloadConfig() (*MainRepoConfig, map[string]*DomainRepoConfig, error) {
 	if info.IsDir() {
 		logrus.Info("Config is a directory - loading all files over top of each other")
 
-		files, err := ioutil.ReadDir(Path)
+		files, err := os.ReadDir(Path)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
 			pathsOrdered = append(pathsOrdered, path.Join(Path, f.Name()))
 		}
 
@@ -105,9 +108,10 @@ func reloadConfig() (*MainRepoConfig, map[string]*DomainRepoConfig, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		defer cleanup.DumpAndCloseStream(f)
+		//goland:noinspection GoDeferInLoop
+		defer f.Close()
 
-		buffer, err := ioutil.ReadAll(f)
+		buffer, err := io.ReadAll(f)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -237,23 +241,15 @@ func DomainConfigFrom(c MainRepoConfig) DomainRepoConfig {
 
 func UniqueDatastores() []DatastoreConfig {
 	confs := make([]DatastoreConfig, 0)
-
-	for _, dsc := range Get().DataStores {
-		confs = append(confs, dsc)
-	}
+	confs = append(confs, Get().DataStores...)
 
 	for _, d := range AllDomains() {
 		for _, dsc := range d.DataStores {
 			found := false
-			for _, edsc := range confs {
-				if edsc.Type == dsc.Type {
-					if dsc.Type == "file" && edsc.Options["path"] == dsc.Options["path"] {
-						found = true
-						break
-					} else if dsc.Type == "s3" && edsc.Options["endpoint"] == dsc.Options["endpoint"] && edsc.Options["bucketName"] == dsc.Options["bucketName"] {
-						found = true
-						break
-					}
+			for _, existingDsc := range confs {
+				if existingDsc.Id == dsc.Id {
+					found = true
+					break
 				}
 			}
 			if found {

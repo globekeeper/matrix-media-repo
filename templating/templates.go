@@ -6,7 +6,7 @@ import (
 	"path"
 	"sync"
 
-	"github.com/turt2live/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/common/config"
 )
 
 type templates struct {
@@ -16,7 +16,7 @@ type templates struct {
 var instance *templates
 var singletonLock = &sync.Once{}
 
-func GetInstance() *templates {
+func getInstance() *templates {
 	if instance == nil {
 		singletonLock.Do(func() {
 			instance = &templates{
@@ -28,10 +28,10 @@ func GetInstance() *templates {
 }
 
 func GetTemplate(name string) (*template.Template, error) {
-	i := GetInstance()
-	//if v, ok := i.cached[name]; ok {
-	//	return v, nil
-	//}
+	i := getInstance()
+	if v, ok := i.cached[name]; ok {
+		return v, nil
+	}
 
 	fname := fmt.Sprintf("%s.html", name)
 	tmplPath := path.Join(config.Runtime.TemplatesPath, fname)

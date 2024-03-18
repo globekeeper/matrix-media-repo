@@ -48,6 +48,8 @@ This will delete all media that has previously been quarantined, local or remote
 
 URL: `POST /_matrix/media/unstable/admin/purge/<server>/<media id>?access_token=your_access_token`
 
+**Note**: Prior to v1.3, this endpoint did not require the `/media` component, but does now.
+
 This will delete the media record, regardless of it being local or remote. Can be called by homeserver administrators and the uploader to delete it.
 
 #### Purge media uploaded by user
@@ -89,6 +91,8 @@ This API is unique in that it can allow administrators of configured homeservers
 #### Quarantine a specific record
 
 URL: `POST /_matrix/media/unstable/admin/quarantine/<server>/<media id>?access_token=your_access_token`
+
+**Note**: Prior to v1.3, this endpoint did not require the `/media` component, but does now.
 
 The `<server>` and `<media id>` can be retrieved from an MXC URI (`mxc://<server>/<media id>`).
 
@@ -238,9 +242,9 @@ Similar to [Per-user usage (all known users)](#per-user-usage-all-known-users), 
 * parameterized querying ability
 * relaxed authorization restrictions (to allow homeserver admins to query against their own homeserver)
 
-This end-point attempts to be a loose equivalent to
-[this](https://matrix-org.github.io/synapse/develop/admin_api/statistics.html#users-media-usage-statistics) Synapse
-endpoint, with the main difference being the absence of "displayname".
+This endpoint attempts to be a loose equivalent to
+[this](https://matrix-org.github.io/synapse/v1.88/admin_api/statistics.html#users-media-usage-statistics) Synapse
+endpoint, with the main difference being the `displayname` will be the user ID.
 
 URL: `GET /_matrix/media/unstable/admin/usage/<server name>/users-stats?access_token=your_access_token`
 
@@ -253,17 +257,22 @@ Example response:
     {
       "media_count" : 12,
       "media_length" : 39546,
-      "user_id" : "@alice:example.com"
+      "user_id" : "@alice:example.com",
+      "displayname": "@alice:example.com"
     },
     {
       "media_count" : 46,
       "media_length" : 5935234,
-      "user_id" : "@bob:example.com"
+      "user_id" : "@bob:example.com",
+      "displayname": "@bob:example.com"
     },
     ...
   ]
 }
 ```
+
+**Note**: This endpoint is also available at the normal Synapse API location: `GET /_synapse/admin/v1/statistics/users/media`.
+This will use the server name implied by the `Host` header as the server name.
 
 #### Per-upload usage (all uploads)
 
@@ -313,7 +322,8 @@ The response is a list of all known tasks:
     },
     "start_ts": 1567460189913,
     "end_ts": 1567460190502,
-    "is_finished": true
+    "is_finished": true,
+    "error_message": ""
   },
   {
     "task_id": 2,
@@ -325,12 +335,15 @@ The response is a list of all known tasks:
     },
     "start_ts": 1567460189913,
     "end_ts": 0,
-    "is_finished": false
+    "is_finished": false,
+    "error_message": ""
   }
 ]
 ```
 
 **Note**: The `params` vary depending on the task.
+
+If `error_message` is present and not an empty string on the returned task, the task failed part way through.
 
 #### Listing unfinished tasks
 
@@ -349,16 +362,21 @@ The response is a list of all unfinished tasks:
     },
     "start_ts": 1567460189913,
     "end_ts": 0,
-    "is_finished": false
+    "is_finished": false,
+    "error_message": ""
   }
 ]
 ```
 
 **Note**: The `params` vary depending on the task.
 
+If `error_message` is present and not an empty string on the returned task, the task failed part way through.
+
 #### Getting information on a specific task
 
 URL: `GET /_matrix/media/unstable/admin/tasks/<task ID>`
+
+**Note**: Prior to v1.3, this endpoint was "tasks" (plural). It is now singular.
 
 The response is the status of the task:
 ```json
@@ -372,11 +390,14 @@ The response is the status of the task:
   },
   "start_ts": 1567460189913,
   "end_ts": 1567460190502,
-  "is_finished": true
+  "is_finished": true,
+  "error_message": ""
 }
 ```
 
 **Note**: The `params` vary depending on the task.
+
+If `error_message` is present and not an empty string on the returned task, the task failed part way through.
 
 ## Exporting/Importing data
 
@@ -384,9 +405,9 @@ Exports (and therefore imports) are currently done on a per-user basis. This is 
 
 #### Exporting data for a user
 
-URL: `POST /_matrix/media/unstable/admin/user/<user ID>/export?include_data=true&s3_urls=true`
+URL: `POST /_matrix/media/unstable/admin/user/<user ID>/export?s3_urls=true`
 
-Both query params are optional, and their default values are shown. If `include_data` is false, only metadata will be returned by the export. `s3_urls`, when true, includes the s3 URL to the media in the metadata if one is available.
+Both query params are optional, and their default values are shown. `s3_urls`, when true, includes the s3 URL to the media in the metadata if one is available.
 
 The response is a task ID and export ID to put into the 'view export' URL:
 
@@ -403,7 +424,7 @@ The response is a task ID and export ID to put into the 'view export' URL:
 
 #### Exporting data for a domain
 
-URL: `POST /_matrix/media/unstable/admin/server/<server name>/export?include_data=true&s3_urls=true`
+URL: `POST /_matrix/media/unstable/admin/server/<server name>/export?s3_urls=true`
 
 Response is the same as the user export endpoint above. The `<server name>` does not need to be configured in the repo - it will export data it has on a remote server if you ask it to.
 
@@ -461,13 +482,13 @@ The response is an empty JSON object if successful.
 
 Once an export has been completed it can be imported back into the media repo. Files that are already known to the repo will not be overwritten - it'll use its known copy first.
 
-**Note**: Imports happen in memory, which can balloon quickly depending on how you exported your data. Although you can import data without s3 it is recommended that you only import from archives generated with `include_data=false`.
-
 **Note**: Only repository administrators can perform imports, regardless of who they are for.
 
 **Note**: Imports done through this method can affect other homeservers! For example, a user's data export could contain
 an entry for a homeserver other than their own, which the media repo will happily import. Always validate the manifest
 of an import before running it!
+
+**Note**: Imports can only be done on Machine 0 in a cluster. For non-cluster setups, the single process *should* already be Machine 0.
 
 URL: `POST /_matrix/media/unstable/admin/import`
 

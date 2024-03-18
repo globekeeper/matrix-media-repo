@@ -1,16 +1,17 @@
 package i
 
 import (
-	"bytes"
 	"errors"
+	"image"
 	_ "image/jpeg"
-	"io/ioutil"
+	"io"
 
 	"github.com/disintegration/imaging"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
-	"github.com/turt2live/matrix-media-repo/thumbnailing/m"
-	"github.com/turt2live/matrix-media-repo/thumbnailing/u"
-	"github.com/turt2live/matrix-media-repo/util"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/thumbnailing/m"
+	"github.com/t2bot/matrix-media-repo/thumbnailing/u"
+	"github.com/t2bot/matrix-media-repo/util"
+	"github.com/t2bot/matrix-media-repo/util/readers"
 )
 
 type jpgGenerator struct {
@@ -24,24 +25,22 @@ func (d jpgGenerator) supportsAnimation() bool {
 	return false
 }
 
-func (d jpgGenerator) matches(img []byte, contentType string) bool {
+func (d jpgGenerator) matches(img io.Reader, contentType string) bool {
 	return util.ArrayContains(d.supportedContentTypes(), contentType)
 }
 
-func (d jpgGenerator) GetOriginDimensions(b []byte, contentType string, ctx rcontext.RequestContext) (bool, int, int, error) {
+func (d jpgGenerator) GetOriginDimensions(b io.Reader, contentType string, ctx rcontext.RequestContext) (bool, int, int, error) {
 	return pngGenerator{}.GetOriginDimensions(b, contentType, ctx)
 }
 
-func (d jpgGenerator) GenerateThumbnail(b []byte, contentType string, width int, height int, method string, animated bool, ctx rcontext.RequestContext) (*m.Thumbnail, error) {
-	src, err := imaging.Decode(bytes.NewBuffer(b))
+func (d jpgGenerator) GenerateThumbnail(b io.Reader, contentType string, width int, height int, method string, animated bool, ctx rcontext.RequestContext) (*m.Thumbnail, error) {
+	br := readers.NewBufferReadsReader(b)
+	orientation := u.ExtractExifOrientation(br)
+	b = br.GetRewoundReader()
+
+	src, err := imaging.Decode(b)
 	if err != nil {
 		return nil, errors.New("jpg: error decoding thumbnail: " + err.Error())
-	}
-
-	var shouldThumbnail bool
-	shouldThumbnail, width, height, animated, method = u.AdjustProperties(src, width, height, animated, false, method)
-	if !shouldThumbnail {
-		return nil, nil
 	}
 
 	thumb, err := u.MakeThumbnail(src, method, width, height)
@@ -49,20 +48,22 @@ func (d jpgGenerator) GenerateThumbnail(b []byte, contentType string, width int,
 		return nil, errors.New("jpg: error making thumbnail: " + err.Error())
 	}
 
-	thumb, err = u.IdentifyAndApplyOrientation(b, thumb)
-	if err != nil {
-		return nil, errors.New("jpg: error applying orientation: " + err.Error())
-	}
+	thumb = u.ApplyOrientation(thumb, orientation)
 
-	imgData := &bytes.Buffer{}
-	err = imaging.Encode(imgData, thumb, imaging.JPEG)
-	if err != nil {
-		return nil, errors.New("jpg: error encoding thumbnail: " + err.Error())
-	}
+	pr, pw := io.Pipe()
+	go func(pw *io.PipeWriter, p image.Image) {
+		err = u.Encode(ctx, pw, p, u.JpegSource)
+		if err != nil {
+			_ = pw.CloseWithError(errors.New("jpg: error encoding thumbnail: " + err.Error()))
+		} else {
+			_ = pw.Close()
+		}
+	}(pw, thumb)
+
 	return &m.Thumbnail{
 		Animated:    false,
 		ContentType: "image/jpeg",
-		Reader:      ioutil.NopCloser(imgData),
+		Reader:      pr,
 	}, nil
 }
 

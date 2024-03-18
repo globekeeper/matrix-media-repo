@@ -7,8 +7,10 @@ type ArchivingConfig struct {
 }
 
 type QuotaUserConfig struct {
-	Glob     string `yaml:"glob"`
-	MaxBytes int64  `yaml:"maxBytes"`
+	Glob       string `yaml:"glob"`
+	MaxBytes   int64  `yaml:"maxBytes"`
+	MaxPending int64  `yaml:"maxPending"`
+	MaxFiles   int64  `yaml:"maxFiles"`
 }
 
 type QuotasConfig struct {
@@ -20,12 +22,14 @@ type UploadsConfig struct {
 	MaxSizeBytes         int64        `yaml:"maxBytes"`
 	MinSizeBytes         int64        `yaml:"minBytes"`
 	ReportedMaxSizeBytes int64        `yaml:"reportedMaxBytes"`
+	MaxPending           int64        `yaml:"maxPending"`
+	MaxAgeSeconds        int64        `yaml:"maxAgeSeconds"`
 	Quota                QuotasConfig `yaml:"quotas"`
 }
 
 type DatastoreConfig struct {
+	Id         string            `yaml:"id"`
 	Type       string            `yaml:"type"`
-	Enabled    bool              `yaml:"enabled"`
 	MediaKinds []string          `yaml:"forKinds,flow"`
 	Options    map[string]string `yaml:"opts,flow"`
 }
@@ -87,30 +91,6 @@ type TimeoutsConfig struct {
 }
 
 type FeatureConfig struct {
-	MSC2448Blurhash MSC2448Config `yaml:"MSC2448"`
-	IPFS            IPFSConfig    `yaml:"IPFS"`
-	Redis           RedisConfig   `yaml:"redis"`
-}
-
-type MSC2448Config struct {
-	Enabled         bool `yaml:"enabled"`
-	MaxRenderWidth  int  `yaml:"maxWidth"`
-	MaxRenderHeight int  `yaml:"maxHeight"`
-	GenerateWidth   int  `yaml:"thumbWidth"`
-	GenerateHeight  int  `yaml:"thumbHeight"`
-	XComponents     int  `yaml:"xComponents"`
-	YComponents     int  `yaml:"yComponents"`
-	Punch           int  `yaml:"punch"`
-}
-
-type IPFSConfig struct {
-	Enabled bool             `yaml:"enabled"`
-	Daemon  IPFSDaemonConfig `yaml:"builtInDaemon"`
-}
-
-type IPFSDaemonConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	RepoPath string `yaml:"repoPath"`
 }
 
 type AccessTokenConfig struct {

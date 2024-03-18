@@ -1,8 +1,6 @@
 package common
 
 const ErrCodeInvalidHost = "M_INVALID_HOST"
-const ErrCodeHostNotFound = "M_HOST_NOT_FOUND"
-const ErrCodeHostBlacklisted = "M_HOST_BLACKLISTED"
 const ErrCodeNotFound = "M_NOT_FOUND"
 const ErrCodeUnknownToken = "M_UNKNOWN_TOKEN"
 const ErrCodeNoGuests = "M_GUEST_ACCESS_FORBIDDEN"
@@ -16,3 +14,5 @@ const ErrCodeRateLimitExceeded = "M_LIMIT_EXCEEDED"
 const ErrCodeUnknown = "M_UNKNOWN"
 const ErrCodeForbidden = "M_FORBIDDEN"
 const ErrCodeQuotaExceeded = "M_QUOTA_EXCEEDED"
+const ErrCodeCannotOverwrite = "M_CANNOT_OVERWRITE_MEDIA"
+const ErrCodeNotYetUploaded = "M_NOT_YET_UPLOADED"

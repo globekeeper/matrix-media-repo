@@ -1,13 +1,13 @@
 package config
 
 import (
-	"github.com/getsentry/sentry-go"
 	"time"
 
 	"github.com/bep/debounce"
 	"github.com/fsnotify/fsnotify"
+	"github.com/getsentry/sentry-go"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/common/globals"
+	"github.com/t2bot/matrix-media-repo/common/globals"
 )
 
 func Watch() *fsnotify.Watcher {
@@ -61,12 +61,15 @@ func onFileChanged() {
 	PrintDomainInfo()
 	CheckDeprecations()
 
+	logrus.Info("Reloading pool & cache configuration")
+	globals.PoolReloadChan <- true
+	globals.ErrorCacheReloadChan <- true
+
 	bindAddressChange := configNew.General.BindAddress != configNow.General.BindAddress
 	bindPortChange := configNew.General.Port != configNow.General.Port
 	forwardAddressChange := configNew.General.TrustAnyForward != configNow.General.TrustAnyForward
 	forwardedHostChange := configNew.General.UseForwardedHost != configNow.General.UseForwardedHost
-	featureChanged := hasWebFeatureChanged(configNew, configNow)
-	if bindAddressChange || bindPortChange || forwardAddressChange || forwardedHostChange || featureChanged {
+	if bindAddressChange || bindPortChange || forwardAddressChange || forwardedHostChange {
 		logrus.Warn("Webserver configuration changed - remounting")
 		globals.WebReloadChan <- true
 	}
@@ -92,14 +95,7 @@ func onFileChanged() {
 		logrus.Warn("Log configuration changed - restart the media repo to apply changes")
 	}
 
-	ipfsDaemonChange := configNew.Features.IPFS.Daemon.Enabled != configNow.Features.IPFS.Daemon.Enabled
-	ipfsDaemonPathChange := configNew.Features.IPFS.Daemon.RepoPath != configNow.Features.IPFS.Daemon.RepoPath
-	if ipfsDaemonChange || ipfsDaemonPathChange {
-		logrus.Warn("IPFS Daemon options changed - reloading")
-		globals.IPFSReloadChan <- true
-	}
-
-	redisEnabledChange := configNew.Features.Redis.Enabled != configNow.Features.Redis.Enabled
+	redisEnabledChange := configNew.Redis.Enabled != configNow.Redis.Enabled
 	redisShardsChange := hasRedisShardConfigChanged(configNew, configNow)
 	if redisEnabledChange || redisShardsChange {
 		logrus.Warn("Cache configuration changed - reloading")
@@ -119,22 +115,19 @@ func onFileChanged() {
 
 	logrus.Info("Restarting recurring tasks")
 	globals.RecurringTasksReloadChan <- true
-}
 
-func hasWebFeatureChanged(configNew *MainRepoConfig, configNow *MainRepoConfig) bool {
-	if configNew.Features.MSC2448Blurhash.Enabled != configNow.Features.MSC2448Blurhash.Enabled {
-		return true
+	pgoEnableChange := configNew.PGO.Enabled != configNow.PGO.Enabled
+	pgoUrlChange := configNew.PGO.SubmitUrl != configNow.PGO.SubmitUrl
+	pgoKeyChange := configNew.PGO.SubmitKey != configNow.PGO.SubmitKey
+	if pgoEnableChange || pgoUrlChange || pgoKeyChange {
+		logrus.Warn("PGO config changed - reloading")
+		globals.PGOReloadChan <- true
 	}
-	if configNew.Features.IPFS.Enabled != configNow.Features.IPFS.Enabled {
-		return true
-	}
-
-	return false
 }
 
 func hasRedisShardConfigChanged(configNew *MainRepoConfig, configNow *MainRepoConfig) bool {
-	oldShards := configNow.Features.Redis.Shards
-	newShards := configNew.Features.Redis.Shards
+	oldShards := configNow.Redis.Shards
+	newShards := configNew.Redis.Shards
 	if len(oldShards) != len(newShards) {
 		return true
 	}

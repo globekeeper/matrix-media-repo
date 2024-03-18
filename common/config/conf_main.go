@@ -16,6 +16,8 @@ type MainRepoConfig struct {
 	Plugins           []PluginConfig        `yaml:"plugins,flow"`
 	Sentry            SentryConfig          `yaml:"sentry"`
 	Redis             RedisConfig           `yaml:"redis"`
+	Tasks             TasksConfig           `yaml:"tasks"`
+	PGO               PGOConfig             `yaml:"pgo"`
 }
 
 func NewDefaultMainConfig() MainRepoConfig {
@@ -42,8 +44,9 @@ func NewDefaultMainConfig() MainRepoConfig {
 		Admins:      []string{},
 		Downloads: MainDownloadsConfig{
 			DownloadsConfig: DownloadsConfig{
-				MaxSizeBytes:        104857600, // 100mb
-				FailureCacheMinutes: 15,
+				MaxSizeBytes:               104857600, // 100mb
+				FailureCacheMinutes:        15,
+				DefaultRangeChunkSizeBytes: 10485760, // 10mb
 			},
 			NumWorkers: 10,
 			ExpireDays: 0,
@@ -133,6 +136,14 @@ func NewDefaultMainConfig() MainRepoConfig {
 		Redis: RedisConfig{
 			Enabled: false,
 			Shards:  []RedisShardConfig{},
+		},
+		Tasks: TasksConfig{
+			NumWorkers: 5,
+		},
+		PGO: PGOConfig{
+			Enabled:   false,
+			SubmitUrl: "https://mmr-pgo.t2host.io/v1/submit",
+			SubmitKey: "",
 		},
 	}
 }

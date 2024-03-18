@@ -3,25 +3,26 @@ package assets
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/hex"
-	"io/ioutil"
+	"encoding/base64"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/common/config"
 )
 
 var tempMigrations string
 var tempTemplates string
+var tempAssets string
 
 func SetupMigrations(givenMigrationsPath string) {
 	_, err := os.Stat(givenMigrationsPath)
 	exists := err == nil || !os.IsNotExist(err)
 	if !exists {
-		tempMigrations, err = ioutil.TempDir(os.TempDir(), "media-repo-migrations")
+		tempMigrations, err = os.MkdirTemp(os.TempDir(), "media-repo-migrations")
 		if err != nil {
 			panic(err)
 		}
@@ -38,7 +39,7 @@ func SetupTemplates(givenTemplatesPath string) {
 		_, err := os.Stat(givenTemplatesPath)
 		exists := err == nil || !os.IsNotExist(err)
 		if !exists {
-			tempTemplates, err = ioutil.TempDir(os.TempDir(), "media-repo-templates")
+			tempTemplates, err = os.MkdirTemp(os.TempDir(), "media-repo-templates")
 			if err != nil {
 				panic(err)
 			}
@@ -55,7 +56,7 @@ func SetupAssets(givenAssetsPath string) {
 	_, err := os.Stat(givenAssetsPath)
 	exists := err == nil || !os.IsNotExist(err)
 	if !exists {
-		tempAssets, err := ioutil.TempDir(os.TempDir(), "media-repo-assets")
+		tempAssets, err = os.MkdirTemp(os.TempDir(), "media-repo-assets")
 		if err != nil {
 			panic(err)
 		}
@@ -69,44 +70,48 @@ func SetupAssets(givenAssetsPath string) {
 
 func Cleanup() {
 	if tempMigrations != "" {
-		logrus.Info("Cleaning up temporary assets directory: ", tempMigrations)
+		logrus.Info("Cleaning up temporary migrations directory: ", tempMigrations)
 		os.Remove(tempMigrations)
 	}
 	if tempTemplates != "" {
 		logrus.Info("Cleaning up temporary assets directory: ", tempTemplates)
 		os.Remove(tempTemplates)
 	}
+	if tempAssets != "" {
+		logrus.Info("Cleaning up temporary assets directory: ", tempAssets)
+		os.Remove(tempAssets)
+	}
 }
 
 func extractPrefixTo(pathName string, destination string) {
-	for f, h := range compressedFiles {
+	for f, b64 := range f2CompressedFiles {
 		if !strings.HasPrefix(f, pathName) {
 			continue
 		}
 
-		logrus.Infof("Decoding %s", f)
-		b, err := hex.DecodeString(h)
+		b, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
 			panic(err)
 		}
 
-		logrus.Infof("Decompressing %s", f)
 		gr, err := gzip.NewReader(bytes.NewBuffer(b))
-		if err != nil {
-			panic(err)
-		}
-		//noinspection GoDeferInLoop,GoUnhandledErrorResult
-		defer gr.Close()
-		uncompressedBytes, err := ioutil.ReadAll(gr)
 		if err != nil {
 			panic(err)
 		}
 
 		dest := path.Join(destination, filepath.Base(f))
-		logrus.Infof("Writing %s to %s", f, dest)
-		err = ioutil.WriteFile(dest, uncompressedBytes, 0644)
+		logrus.Debugf("Writing %s to %s", f, dest)
+		file, err := os.Create(dest)
 		if err != nil {
 			panic(err)
 		}
+
+		_, err = io.Copy(file, gr)
+		if err != nil {
+			panic(err)
+		}
+
+		_ = gr.Close()
+		file.Close()
 	}
 }

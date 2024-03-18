@@ -64,7 +64,8 @@ type SharedSecretConfig struct {
 }
 
 type FederationConfig struct {
-	BackoffAt int `yaml:"backoffAt"`
+	BackoffAt    int      `yaml:"backoffAt"`
+	IgnoredHosts []string `yaml:"ignoredHosts,flow"`
 }
 
 type PluginConfig struct {
@@ -88,4 +89,14 @@ type RedisConfig struct {
 type RedisShardConfig struct {
 	Name    string `yaml:"name"`
 	Address string `yaml:"addr"`
+}
+
+type TasksConfig struct {
+	NumWorkers int `yaml:"numWorkers"`
+}
+
+type PGOConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	SubmitUrl string `yaml:"submitUrl"`
+	SubmitKey string `yaml:"submitKey"`
 }
