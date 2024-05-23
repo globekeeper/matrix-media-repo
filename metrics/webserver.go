@@ -2,24 +2,22 @@ package metrics
 
 import (
 	"context"
-	"github.com/getsentry/sentry-go"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/common/config"
 )
 
 var srv *http.Server
 
 func internalHandler(res http.ResponseWriter, req *http.Request) {
-	logrus.Info("Updating live metrics for cache")
-	for _, fn := range beforeMetricsCalledFns {
-		fn()
-	}
 	promhttp.Handler().ServeHTTP(res, req)
 }
 
@@ -35,8 +33,9 @@ func Init() {
 	address := net.JoinHostPort(config.Get().Metrics.BindAddress, strconv.Itoa(config.Get().Metrics.Port))
 	srv = &http.Server{Addr: address, Handler: rtr}
 	go func() {
+		//goland:noinspection HttpUrlsUsage
 		logrus.WithField("address", address).Info("Started metrics listener. Listening at http://" + address)
-		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			sentry.CaptureException(err)
 			logrus.Fatal(err)
 		}

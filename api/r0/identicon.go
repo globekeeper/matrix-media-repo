@@ -1,9 +1,7 @@
 package r0
 
 import (
-	"bytes"
 	"crypto/md5"
-	"github.com/getsentry/sentry-go"
 	"image/color"
 	"io"
 	"net/http"
@@ -11,23 +9,19 @@ import (
 
 	"github.com/cupcake/sigil/gen"
 	"github.com/disintegration/imaging"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/api"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/api/_apimeta"
+	"github.com/t2bot/matrix-media-repo/api/_responses"
+	"github.com/t2bot/matrix-media-repo/api/_routers"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
 )
 
-type IdenticonResponse struct {
-	Avatar io.Reader
-}
-
-func Identicon(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func Identicon(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Identicons.Enabled {
-		return api.NotFoundError()
+		return _responses.NotFoundError()
 	}
 
-	params := mux.Vars(r)
-	seed := params["seed"]
+	seed := _routers.GetParam("seed", r)
 
 	var err error
 	width := 96
@@ -38,16 +32,28 @@ func Identicon(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo)
 	if widthStr != "" {
 		width, err = strconv.Atoi(widthStr)
 		if err != nil {
-			return api.InternalServerError("Error parsing width: " + err.Error())
+			return _responses.InternalServerError("Error parsing width: " + err.Error())
 		}
 		height = width
 	}
 	if heightStr != "" {
 		height, err = strconv.Atoi(heightStr)
 		if err != nil {
-			return api.InternalServerError("Error parsing height: " + err.Error())
+			return _responses.InternalServerError("Error parsing height: " + err.Error())
 		}
 	}
+
+	clamp := func(v int) int {
+		if v > 512 {
+			return 512
+		}
+		if v < 96 {
+			return 96
+		}
+		return v
+	}
+	width = clamp(width)
+	height = clamp(height)
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"identiconWidth":  width,
@@ -74,22 +80,31 @@ func Identicon(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo)
 	}
 
 	rctx.Log.Info("Generating identicon")
-	img := sig.Make(width, false, []byte(hashed))
+	img := sig.Make(width, false, hashed)
 	if width != height {
 		// Resize to the desired height
 		rctx.Log.Info("Resizing image to fit height")
 		img = imaging.Resize(img, width, height, imaging.Lanczos)
 	}
 
-	imgData := &bytes.Buffer{}
-	err = imaging.Encode(imgData, img, imaging.PNG)
-	if err != nil {
-		rctx.Log.Error("Error generating image:" + err.Error())
-		sentry.CaptureException(err)
-		return api.InternalServerError("error generating identicon")
-	}
+	pr, pw := io.Pipe()
+	go func() {
+		// dev note: we specifically hardcode this to PNG for ease of return type later (don't use u.Encode())
+		err = imaging.Encode(pw, img, imaging.PNG)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+		} else {
+			_ = pw.Close()
+		}
+	}()
 
-	return &IdenticonResponse{Avatar: imgData}
+	return &_responses.DownloadResponse{
+		ContentType:       "image/png",
+		Filename:          string(hashed) + ".png",
+		SizeBytes:         0,
+		Data:              pr,
+		TargetDisposition: "inline",
+	}
 }
 
 func rgb(r, g, b uint8) color.NRGBA {

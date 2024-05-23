@@ -5,13 +5,14 @@ import (
 	"net/http"
 
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/common"
+	"github.com/t2bot/matrix-media-repo/common/config"
 )
 
 func Initial() RequestContext {
 	return RequestContext{
 		Context: context.Background(),
-		Log:     logrus.WithFields(logrus.Fields{"nocontext": true}),
+		Log:     logrus.WithFields(logrus.Fields{"internal_flag": 1}),
 		Config: config.DomainRepoConfig{
 			MinimumRepoConfig: config.Get().MinimumRepoConfig,
 			Downloads:         config.Get().Downloads.DownloadsConfig,
@@ -22,24 +23,33 @@ func Initial() RequestContext {
 	}.populate()
 }
 
+func InitialNoConfig() RequestContext {
+	return RequestContext{
+		Context: context.Background(),
+		Log:     logrus.WithFields(logrus.Fields{"internal_flag": 2}),
+		Config:  config.DomainRepoConfig{},
+		Request: nil,
+	}.populate()
+}
+
 type RequestContext struct {
 	context.Context
 
 	// These are also stored on the context object itself
-	Log     *logrus.Entry           // mr.logger
-	Config  config.DomainRepoConfig // mr.serverConfig
-	Request *http.Request           // mr.request
+	Log     *logrus.Entry           // common.ContextLogger
+	Config  config.DomainRepoConfig // common.ContextServerConfig
+	Request *http.Request           // common.ContextRequest
 }
 
 func (c RequestContext) populate() RequestContext {
-	c.Context = context.WithValue(c.Context, "mr.logger", c.Log)
-	c.Context = context.WithValue(c.Context, "mr.serverConfig", c.Config)
-	c.Context = context.WithValue(c.Context, "mr.request", c.Request)
+	c.Context = context.WithValue(c.Context, common.ContextLogger, c.Log)
+	c.Context = context.WithValue(c.Context, common.ContextServerConfig, c.Config)
+	c.Context = context.WithValue(c.Context, common.ContextRequest, c.Request)
 	return c
 }
 
 func (c RequestContext) ReplaceLogger(log *logrus.Entry) RequestContext {
-	ctx := context.WithValue(c.Context, "mr.logger", log)
+	ctx := context.WithValue(c.Context, common.ContextLogger, log)
 	return RequestContext{
 		Context: ctx,
 		Log:     log,

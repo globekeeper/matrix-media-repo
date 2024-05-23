@@ -1,13 +1,20 @@
 package tasks
 
+import (
+	"github.com/t2bot/matrix-media-repo/tasks/task_runner"
+)
+
 func StartAll() {
-	StartRemoteMediaPurgeRecurring()
-	StartThumbnailPurgeRecurring()
-	StartPreviewsPurgeRecurring()
+	executeEnable()
+
+	scheduleHourly(RecurringTaskPurgeRemoteMedia, task_runner.PurgeRemoteMedia)
+	scheduleHourly(RecurringTaskPurgeThumbnails, task_runner.PurgeThumbnails)
+	scheduleHourly(RecurringTaskPurgePreviews, task_runner.PurgePreviews)
+	scheduleHourly(RecurringTaskPurgeHeldMediaIds, task_runner.PurgeHeldMediaIds)
+
+	scheduleUnfinished()
 }
 
 func StopAll() {
-	StopRemoteMediaPurgeRecurring()
-	StopThumbnailPurgeRecurring()
-	StopPreviewsPurgeRecurring()
+	stopRecurring()
 }

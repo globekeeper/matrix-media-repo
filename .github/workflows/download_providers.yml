@@ -1,0 +1,17 @@
+name: "Update oEmbed providers"
+on:
+#  schedule:
+#    - cron: "0 0 * * 2" # Every Tuesday at 00:00
+  workflow_dispatch:
+jobs:
+  update_providers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Download new providers.json"
+        run: "curl -s --fail https://oembed.com/providers.json > assets/providers.json"
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update providers.json"

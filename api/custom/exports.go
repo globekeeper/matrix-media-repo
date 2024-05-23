@@ -2,22 +2,23 @@ package custom
 
 import (
 	"bytes"
-	"github.com/getsentry/sentry-go"
 	"net/http"
 	"strconv"
 
+	"github.com/getsentry/sentry-go"
+	"github.com/t2bot/matrix-media-repo/api/_apimeta"
+	"github.com/t2bot/matrix-media-repo/api/_responses"
+	"github.com/t2bot/matrix-media-repo/api/_routers"
+	"github.com/t2bot/matrix-media-repo/database"
+	"github.com/t2bot/matrix-media-repo/datastores"
+	"github.com/t2bot/matrix-media-repo/tasks"
+
 	"github.com/dustin/go-humanize"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/api"
-	"github.com/turt2live/matrix-media-repo/api/r0"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
-	"github.com/turt2live/matrix-media-repo/controllers/data_controller"
-	"github.com/turt2live/matrix-media-repo/matrix"
-	"github.com/turt2live/matrix-media-repo/storage"
-	"github.com/turt2live/matrix-media-repo/storage/datastore"
-	"github.com/turt2live/matrix-media-repo/templating"
-	"github.com/turt2live/matrix-media-repo/util"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/matrix"
+	"github.com/t2bot/matrix-media-repo/templating"
+	"github.com/t2bot/matrix-media-repo/util"
 )
 
 type ExportStarted struct {
@@ -36,142 +37,141 @@ type ExportMetadata struct {
 	Parts  []*ExportPartMetadata `json:"parts"`
 }
 
-func ExportUserData(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func ExportUserData(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
 	isAdmin := util.IsGlobalAdmin(user.UserId) || user.IsShared
 	if !rctx.Config.Archiving.SelfService && !isAdmin {
-		return api.AuthFailed()
+		return _responses.AuthFailed()
 	}
 
-	includeData := r.URL.Query().Get("include_data") != "false"
 	s3urls := r.URL.Query().Get("s3_urls") != "false"
 
-	params := mux.Vars(r)
-
-	userId := params["userId"]
+	userId := _routers.GetParam("userId", r)
 
 	if !isAdmin && user.UserId != userId {
-		return api.BadRequest("cannot export data for another user")
+		return _responses.BadRequest("cannot export data for another user")
 	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"exportUserId": userId,
-		"includeData":  includeData,
 		"s3urls":       s3urls,
 	})
-	task, exportId, err := data_controller.StartUserExport(userId, s3urls, includeData, rctx)
+	task, exportId, err := tasks.RunUserExport(rctx, userId, s3urls)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("fatal error starting export")
+		return _responses.InternalServerError("fatal error starting export")
 	}
 
-	return &api.DoNotCacheResponse{Payload: &ExportStarted{
-		TaskID:   task.ID,
+	return &_responses.DoNotCacheResponse{Payload: &ExportStarted{
+		TaskID:   task.TaskId,
 		ExportID: exportId,
 	}}
 }
 
-func ExportServerData(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func ExportServerData(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
 	isAdmin := util.IsGlobalAdmin(user.UserId) || user.IsShared
 	if !rctx.Config.Archiving.SelfService && !isAdmin {
-		return api.AuthFailed()
+		return _responses.AuthFailed()
 	}
 
-	includeData := r.URL.Query().Get("include_data") != "false"
 	s3urls := r.URL.Query().Get("s3_urls") != "false"
 
-	params := mux.Vars(r)
-
-	serverName := params["serverName"]
+	serverName := _routers.GetParam("serverName", r)
 
 	if !isAdmin {
 		// They might be a local admin, so check that.
 
 		// We won't be able to check unless we know about the homeserver though
 		if !util.IsServerOurs(serverName) {
-			return api.BadRequest("cannot export data for another server")
+			return _responses.BadRequest("cannot export data for another server")
 		}
 
 		isLocalAdmin, err := matrix.IsUserAdmin(rctx, serverName, user.AccessToken, r.RemoteAddr)
 		if err != nil {
-			rctx.Log.Error("Error verifying local admin: " + err.Error())
+			rctx.Log.Debug("Error verifying local admin: ", err)
 			isLocalAdmin = false
 		}
 		if !isLocalAdmin {
-			return api.BadRequest("cannot export data for another server")
+			return _responses.BadRequest("cannot export data for another server")
 		}
 	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"exportServerName": serverName,
-		"includeData":      includeData,
 		"s3urls":           s3urls,
 	})
-	task, exportId, err := data_controller.StartServerExport(serverName, s3urls, includeData, rctx)
+	task, exportId, err := tasks.RunServerExport(rctx, serverName, s3urls)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("fatal error starting export")
+		return _responses.InternalServerError("fatal error starting export")
 	}
 
-	return &api.DoNotCacheResponse{Payload: &ExportStarted{
-		TaskID:   task.ID,
+	return &_responses.DoNotCacheResponse{Payload: &ExportStarted{
+		TaskID:   task.TaskId,
 		ExportID: exportId,
 	}}
 }
 
-func ViewExport(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func ViewExport(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
-	params := mux.Vars(r)
+	exportId := _routers.GetParam("exportId", r)
 
-	exportId := params["exportId"]
+	if !_routers.ServerNameRegex.MatchString(exportId) {
+		_responses.BadRequest("invalid export ID")
+	}
+
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"exportId": exportId,
 	})
 
-	exportDb := storage.GetDatabase().GetExportStore(rctx)
+	exportDb := database.GetInstance().Exports.Prepare(rctx)
+	partsDb := database.GetInstance().ExportParts.Prepare(rctx)
 
-	exportInfo, err := exportDb.GetExportMetadata(exportId)
+	entityId, err := exportDb.GetEntity(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get metadata")
+		return _responses.InternalServerError("failed to get entity for export ID")
+	}
+	if entityId == "" {
+		return _responses.NotFoundError()
 	}
 
-	parts, err := exportDb.GetExportParts(exportId)
+	parts, err := partsDb.GetForExport(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get export parts")
+		return _responses.InternalServerError("failed to get export parts")
 	}
 
 	template, err := templating.GetTemplate("view_export")
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get template")
+		return _responses.InternalServerError("failed to get template")
 	}
 
 	model := &templating.ViewExportModel{
-		ExportID:    exportInfo.ExportID,
-		Entity:      exportInfo.Entity,
+		ExportID:    exportId,
+		Entity:      entityId,
 		ExportParts: make([]*templating.ViewExportPartModel, 0),
 	}
 	for _, p := range parts {
 		model.ExportParts = append(model.ExportParts, &templating.ViewExportPartModel{
-			ExportID:       exportInfo.ExportID,
-			Index:          p.Index,
+			ExportID:       exportId,
+			Index:          p.PartNum,
 			FileName:       p.FileName,
 			SizeBytes:      p.SizeBytes,
 			SizeBytesHuman: humanize.Bytes(uint64(p.SizeBytes)),
@@ -183,67 +183,75 @@ func ViewExport(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to render template")
+		return _responses.InternalServerError("failed to render template")
 	}
 
-	return &api.HtmlResponse{HTML: string(html.Bytes())}
+	return &_responses.HtmlResponse{HTML: html.String()}
 }
 
-func GetExportMetadata(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func GetExportMetadata(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
-	params := mux.Vars(r)
+	exportId := _routers.GetParam("exportId", r)
 
-	exportId := params["exportId"]
+	if !_routers.ServerNameRegex.MatchString(exportId) {
+		_responses.BadRequest("invalid export ID")
+	}
+
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"exportId": exportId,
 	})
 
-	exportDb := storage.GetDatabase().GetExportStore(rctx)
+	exportDb := database.GetInstance().Exports.Prepare(rctx)
+	partsDb := database.GetInstance().ExportParts.Prepare(rctx)
 
-	exportInfo, err := exportDb.GetExportMetadata(exportId)
+	entityId, err := exportDb.GetEntity(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get metadata")
+		return _responses.InternalServerError("failed to get entity for export ID")
 	}
 
-	parts, err := exportDb.GetExportParts(exportId)
+	parts, err := partsDb.GetForExport(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get export parts")
+		return _responses.InternalServerError("failed to get export parts")
 	}
 
 	metadata := &ExportMetadata{
-		Entity: exportInfo.Entity,
+		Entity: entityId,
 		Parts:  make([]*ExportPartMetadata, 0),
 	}
 	for _, p := range parts {
 		metadata.Parts = append(metadata.Parts, &ExportPartMetadata{
-			Index:     p.Index,
+			Index:     p.PartNum,
 			SizeBytes: p.SizeBytes,
 			FileName:  p.FileName,
 		})
 	}
 
-	return &api.DoNotCacheResponse{Payload: metadata}
+	return &_responses.DoNotCacheResponse{Payload: metadata}
 }
 
-func DownloadExportPart(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func DownloadExportPart(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
-	params := mux.Vars(r)
+	exportId := _routers.GetParam("exportId", r)
+	pid := _routers.GetParam("partId", r)
 
-	exportId := params["exportId"]
-	partId, err := strconv.ParseInt(params["partId"], 10, 64)
+	if !_routers.ServerNameRegex.MatchString(exportId) {
+		_responses.BadRequest("invalid export ID")
+	}
+
+	partId, err := strconv.Atoi(pid)
 	if err != nil {
 		rctx.Log.Error(err)
-		return api.BadRequest("invalid part index")
+		return _responses.BadRequest("invalid part index")
 	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
@@ -251,77 +259,88 @@ func DownloadExportPart(r *http.Request, rctx rcontext.RequestContext, user api.
 		"partId":   partId,
 	})
 
-	db := storage.GetDatabase().GetExportStore(rctx)
-	part, err := db.GetExportPart(exportId, int(partId))
+	partsDb := database.GetInstance().ExportParts.Prepare(rctx)
+	part, err := partsDb.Get(exportId, partId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to get part")
+		return _responses.InternalServerError("failed to get part")
 	}
 
-	s, err := datastore.DownloadStream(rctx, part.DatastoreID, part.Location)
+	if part == nil {
+		return _responses.NotFoundError()
+	}
+
+	dsConf, ok := datastores.Get(rctx, part.DatastoreId)
+	if !ok {
+		sentry.CaptureMessage("failed to locate datastore")
+		return _responses.InternalServerError("failed to locate datastore")
+	}
+	s, err := datastores.Download(rctx, dsConf, part.Location)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to start download")
+		return _responses.InternalServerError("failed to start download")
 	}
 
-	return &r0.DownloadMediaResponse{
-		ContentType: "application/gzip",
-		SizeBytes:   part.SizeBytes,
-		Data:        s,
-		Filename:    part.FileName,
+	return &_responses.DownloadResponse{
+		ContentType:       "application/gzip", // TODO: We should be detecting type rather than assuming
+		SizeBytes:         part.SizeBytes,
+		Data:              s,
+		Filename:          part.FileName,
 		TargetDisposition: "attachment",
 	}
 }
 
-func DeleteExport(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func DeleteExport(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	if !rctx.Config.Archiving.Enabled {
-		return api.BadRequest("archiving is not enabled")
+		return _responses.BadRequest("archiving is not enabled")
 	}
 
-	params := mux.Vars(r)
+	exportId := _routers.GetParam("exportId", r)
 
-	exportId := params["exportId"]
+	if !_routers.ServerNameRegex.MatchString(exportId) {
+		_responses.BadRequest("invalid export ID")
+	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"exportId": exportId,
 	})
 
-	db := storage.GetDatabase().GetExportStore(rctx)
+	exportDb := database.GetInstance().Exports.Prepare(rctx)
+	partsDb := database.GetInstance().ExportParts.Prepare(rctx)
 
 	rctx.Log.Info("Getting information on which parts to delete")
-	parts, err := db.GetExportParts(exportId)
+	parts, err := partsDb.GetForExport(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to delete export")
+		return _responses.InternalServerError("failed to get export parts")
 	}
 
 	for _, part := range parts {
-		rctx.Log.Info("Locating datastore: " + part.DatastoreID)
-		ds, err := datastore.LocateDatastore(rctx, part.DatastoreID)
+		rctx.Log.Debugf("Deleting object '%s' from datastore '%s'", part.Location, part.DatastoreId)
+		err = datastores.RemoveWithDsId(rctx, part.DatastoreId, part.Location)
 		if err != nil {
 			rctx.Log.Error(err)
 			sentry.CaptureException(err)
-			return api.InternalServerError("failed to delete export")
-		}
-
-		rctx.Log.Info("Deleting object: " + part.Location)
-		err = ds.DeleteObject(part.Location)
-		if err != nil {
-			rctx.Log.Warn(err)
-			sentry.CaptureException(err)
+			return _responses.InternalServerError("failed to delete export part")
 		}
 	}
 
-	rctx.Log.Info("Purging export from database")
-	err = db.DeleteExportAndParts(exportId)
+	rctx.Log.Debug("Purging export from database")
+	err = partsDb.DeleteForExport(exportId)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("failed to delete export")
+		return _responses.InternalServerError("failed to delete export parts")
+	}
+	err = exportDb.Delete(exportId)
+	if err != nil {
+		rctx.Log.Error(err)
+		sentry.CaptureException(err)
+		return _responses.InternalServerError("failed to delete export record")
 	}
 
-	return api.EmptyResponse{}
+	return _responses.EmptyResponse{}
 }

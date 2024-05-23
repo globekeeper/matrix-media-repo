@@ -1,0 +1,42 @@
+repo:
+  bindAddress: '0.0.0.0'
+  port: 8000
+  logDirectory: "-"
+  logColors: false
+  jsonLogs: false
+  logLevel: "debug"
+  trustAnyForwardedAddress: false
+  useForwardedHost: true
+database:
+  postgres: "{{.PgConnectionString}}"
+  pool:
+    maxConnections: 25
+    maxIdleConnections: 5
+homeservers:
+  {{range .Homeservers}}
+  - name: "{{.ServerName}}"
+    csApi: "{{.ClientServerApiUrl}}"
+    backoffAt: 10
+    adminApiKind: "synapse"
+  {{end}}
+redis:
+  enabled: true
+  databaseNumber: 0
+  shards:
+    - name: "server1"
+      addr: "{{.RedisAddr}}"
+accessTokens:
+  maxCacheTimeSeconds: 43200
+datastores:
+  - type: s3
+    id: "s3_internal"
+    forKinds: [ "thumbnails", "remote_media", "local_media", "archives" ]
+    opts:
+      tempPath: "/tmp/mediarepo_s3_upload"
+      endpoint: "{{.S3Endpoint}}"
+      bucketName: "mybucket"
+      accessKeyId: "mykey"
+      accessSecret: "mysecret"
+      ssl: false
+rateLimit:
+  enabled: false # we've got tests which intentionally spam

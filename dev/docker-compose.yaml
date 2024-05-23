@@ -1,15 +1,46 @@
 version: '2.0'
 services:
-  media_conduit:
-    container_name: "media_repo_conduit"
-    image: "matrixconduit/matrix-conduit:latest"
-    #image: "conduit-local"
+  media_redis01:
+    container_name: "media_repo_redis01"
+    image: "redis:latest"
     restart: unless-stopped
     volumes:
-      - ./conduit-db:/srv/conduit/.local/share/conduit
-      - ./conduit.toml:/srv/conduit/conduit.toml
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: "redis-server /usr/local/etc/redis/redis.conf"
     ports:
-      - "6167:6167"
+      - "7001:6379"
+    networks:
+      - media_proxy
+  media_redis02:
+    container_name: "media_repo_redis02"
+    image: "redis:latest"
+    restart: unless-stopped
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: "redis-server /usr/local/etc/redis/redis.conf"
+    ports:
+      - "7002:6379"
+    networks:
+      - media_proxy
+  media_redis03:
+    container_name: "media_repo_redis03"
+    image: "redis:latest"
+    restart: unless-stopped
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: "redis-server /usr/local/etc/redis/redis.conf"
+    ports:
+      - "7003:6379"
+    networks:
+      - media_proxy
+  media_homeserver:
+    container_name: "media_repo_synapse"
+    image: "matrixdotorg/synapse:v1.98.0"
+    restart: unless-stopped
+    volumes:
+      - ./synapse-db:/data
+    ports:
+      - "6167:8008"
     networks:
       - media_proxy
   media_nginx:
@@ -17,7 +48,7 @@ services:
     image: "nginx:latest"
     restart: unless-stopped
     volumes:
-      - ./conduit.nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./homeserver.nginx.conf:/etc/nginx/conf.d/default.conf
     ports:
       - "8008:80"
     networks:

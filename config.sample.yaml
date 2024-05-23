@@ -31,7 +31,7 @@ repo:
 
   # If false, the media repo will not use the X-Forwarded-Host header commonly added by reverse proxies.
   # Typically this should remain as true, though in some circumstances it may need to be disabled.
-  # See https://github.com/turt2live/matrix-media-repo/issues/202 for more information.
+  # See https://github.com/t2bot/matrix-media-repo/issues/202 for more information.
   useForwardedHost: true
 
 # Options for dealing with federation
@@ -40,6 +40,18 @@ federation:
   # media repo will back off. This defaults to 20 if not given. Note that 404 errors from
   # the remote server do not count towards this.
   backoffAt: 20
+
+  # The domains the media repo should never serve media for. Existing media already stored from
+  # these domains will remain, however will not be downloadable without a data export. Media
+  # repo administrators will bypass this check. Admin APIs will still work for media on these
+  # domains.
+  #
+  # This will not prevent the listed domains from accessing media on this media repo - it only
+  # stops users on *this* media repo from accessing media originally uploaded to the listed domains.
+  #
+  # Note: Adding domains controlled by the media repo itself to this list is not advisable.
+  ignoredHosts:
+    - example.org
 
 # The database configuration for the media repository
 # Do NOT put your homeserver's existing database credentials here. Create a new database and
@@ -61,16 +73,24 @@ database:
 # The configuration for the homeservers this media repository is known to control. Servers
 # not listed here will not be able to upload media.
 homeservers:
-  - name: example.org # This should match the server_name of your homeserver, and the Host header
-                      # provided to the media repo.
-    csApi: "https://example.org/" # The base URL to where the homeserver can actually be reached
-    backoffAt: 10 # The number of consecutive failures in calling this homeserver before the
-                  # media repository will start backing off. This defaults to 10 if not given.
-    adminApiKind: "matrix" # The kind of admin API the homeserver supports. If set to "matrix",
-                           # the media repo will use the Synapse-defined endpoints under the
-                           # unstable client-server API. When this is "synapse", the new /_synapse
-                           # endpoints will be used instead. Unknown values are treated as the
-                           # default, "matrix".
+  - # Keep the dash from this line.
+
+    # This should match the server_name of your homeserver, and the Host header
+    # provided to the media repo.
+    name: example.org
+
+    # The base URL to where the homeserver can actually be reached by MMR.
+    csApi: "https://example.org/"
+
+    # The number of consecutive failures in calling this homeserver before the
+    # media repository will start backing off. This defaults to 10 if not given.
+    backoffAt: 10
+
+    # The admin API interface supported by the homeserver. MMR uses a subset of the admin API
+    # during certain operations, like attempting to purge media from a room or validating server
+    # admin status. This should be set to one of "synapse", "dendrite", or "matrix". When set
+    # to "matrix", most functionality requiring the admin API will not work.
+    adminApiKind: "synapse"
 
 # Options for controlling how access tokens work with the media repo. It is recommended that if
 # you are going to use these options that the `/logout` and `/logout/all` client-server endpoints
@@ -142,11 +162,13 @@ sharedSecretAuth:
 # for a datastore to use, will always use the smallest datastore first.
 datastores:
   - type: file
-    enabled: false # Enable this to set up data storage.
+    id: "UNIQUE_ID_HERE" # ID for this datastore (cannot change). Alphanumeric recommended.
     # Datastores can be split into many areas when handling uploads. Media is still de-duplicated
     # across all datastores (local content which duplicates remote content will re-use the remote
     # content's location). This option is useful if your datastore is becoming very large, or if
     # you want faster storage for a particular kind of media.
+    #
+    # To disable this datastore, making it readonly, specify `forKinds: []`.
     #
     # The kinds available are:
     #   thumbnails    - Used to store thumbnails of media (local and remote).
@@ -158,7 +180,7 @@ datastores:
       path: /var/matrix/media
 
   - type: s3
-    enabled: false # Enable this to set up s3 uploads
+    id: "ANOTHER_UNIQUE_ID_HERE" # ID for this datastore (cannot change). Alphanumeric recommended.
     forKinds: ["thumbnails", "remote_media", "local_media", "archives"]
     opts:
       # The s3 uploader needs a temporary location to buffer files to reduce memory usage on
@@ -177,20 +199,19 @@ datastores:
       # An optional storage class for tuning how the media is stored at s3.
       # See https://aws.amazon.com/s3/storage-classes/ for details; uncomment to use.
       #storageClass: STANDARD
-
-  # The media repo does support an IPFS datastore, but only if the IPFS feature is enabled. If
-  # the feature is not enabled, this will not work. Note that IPFS support is experimental at
-  # the moment and not recommended for general use.
-  #
-  # NOTE: Everything you upload to IPFS will be publicly accessible, even when the media repo
-  # puts authentication on the download endpoints. Only use this option for cases where you
-  # expect your media to be publicly accessible.
-  - type: ipfs
-    enabled: false # Enable this to use IPFS support
-    forKinds: ["local_media"]
-    # The IPFS datastore currently has no options. It will use the daemon or HTTP API configured
-    # in the IPFS section of your main config.
-    opts: {}
+      # When set, if the requesting user/server supports being redirected, and MMR is capable
+      # of performing that redirection, they will be redirected to the given object location.
+      # The object ID used in S3 is assumed to be the file name, and will simply be appended.
+      # It is therefore important to include any trailing slashes or path information. For
+      # example, an object with ID "hello/world" will get converted to "https://mycdn.example.org/hello/world".
+      # Note that MMR may not redirect in all cases, even if the client/server requests the
+      # capability. MMR may still be responsible for bandwidth charges incurred from going to
+      # the bucket directly.
+      #publicBaseUrl: "https://mycdn.example.org/"
+      # Set to `true` to bypass any local cache when `publicBaseUrl` is set. Has no effect
+      # when `publicBaseUrl` is unset. Defaults to false (cached media will be served by MMR
+      # before redirection if present).
+      #redirectWhenCached: true
 
 # Options for controlling archives. Archives are exports of a particular user's content for
 # the purpose of GDPR or moving media to a different server.
@@ -227,24 +248,43 @@ uploads:
   # Set this to -1 to indicate that there is no limit. Zero will force the use of maxBytes.
   #reportedMaxBytes: 104857600
 
+  # The number of pending uploads a user is permitted to have at a given time. They must cancel,
+  # complete, or otherwise let pending requests expire before uploading any more media. Set to
+  # zero to disable.
+  maxPending: 5
+
+  # The duration the server will wait to receive media that was asynchronously uploaded before
+  # expiring it entirely. This should be set sufficiently high for a client on poor connectivity
+  # to upload something. The Matrix specification recommends 24 hours (86400 seconds), however
+  # this project recommends 30 minutes (1800 seconds).
+  maxAgeSeconds: 1800
+
   # Options for limiting how much content a user can upload. Quotas are applied to content
   # associated with a user regardless of de-duplication. Quotas which affect remote servers
   # or users will not take effect. When a user exceeds their quota they will be unable to
   # upload any more media.
   quotas:
-    # Whether or not quotas are enabled/enforced. Note that even when disabled the media repo
-    # will track how much media a user has uploaded. This is disabled by default.
+    # Whether quotas are enabled/enforced. Note that even when disabled the media repo will
+    # track how much media a user has uploaded. Quotas are disabled by default.
     enabled: false
 
-    # The quota rules that affect users. The first rule to match the uploader will take effect.
-    # An implied rule which matches all users and has no quota is always last in this list,
-    # meaning that if no rules are supplied then users will be able to upload anything. Similarly,
-    # if no rules match a user then the implied rule will match, allowing the user to have no
-    # quota. The quota will let the user upload to 1 media past their quota, meaning that from
-    # a statistics perspective the user might exceed their quota however only by a small amount.
+    # The upload quota rules which affect users. The first rule to match the user ID will take
+    # effect. If a user does not match a rule, the defaults implied by the above config will
+    # take effect instead. The user will not be permitted to upload anything above these quota
+    # values, but can match them exactly.
     users:
       - glob: "@*:*"  # Affect all users. Use asterisks (*) to match any character.
-        maxBytes: 53687063712 # 50GB default, 0 to disable
+        # The maximum number of TOTAL bytes a user can upload. Defaults to zero (no limit).
+        maxBytes: 53687063712 # 50gb
+        # The same as maxPending above - the number of uploads the user can have waiting to
+        # complete before starting another one. Defaults to maxPending above. Set to 0 to
+        # disable.
+        maxPending: 5
+        # The maximum number of uploaded files a user can have. Defaults to zero (no limit).
+        # If both maxBytes and maxFiles are in use then the first condition a user triggers
+        # will prevent upload. Note that a user can still have uploads contributing to maxPending,
+        # but will not be able to complete them if they are at maxFiles.
+        maxFiles: 0
 
 # Settings related to downloading files from the media repository
 downloads:
@@ -318,7 +358,7 @@ urlPreviews:
     - 'fe80::/64'
     - 'fc00::/7'
   allowedNetworks:
-    - "0.0.0.0/0" # "Everything". The blacklist will help limit this.
+    - "0.0.0.0/0" # "Everything". The deny list will help limit this.
                   # This is the default value for this field.
 
   # How many days after a preview is generated before it expires and is deleted. The preview
@@ -334,7 +374,7 @@ urlPreviews:
   # Set the User-Agent header to supply when generating URL previews
   userAgent: "matrix-media-repo"
 
-  # When true, oEmbed previews will be enabled. Typically these kinds of previews are used for
+  # When true, oEmbed previews will be enabled. Typically, these kinds of previews are used for
   # sites that do not support OpenGraph or page scraping, such as Twitter. For information on
   # specifying providers for oEmbed, including your own, see the following documentation:
   # https://docs.t2bot.io/matrix-media-repo/url-previews/oembed.html
@@ -391,7 +431,10 @@ thumbnails:
     - "image/apng"
     - "image/gif"
     - "image/heif"
+    - "image/heic"
     - "image/webp"
+    - "image/bmp"
+    - "image/tiff"
     #- "image/svg+xml" # Be sure to have ImageMagick installed to thumbnail SVG files
     - "audio/mpeg"
     - "audio/ogg"
@@ -450,6 +493,7 @@ quarantine:
   replaceDownloads: false
 
   # If provided, the given image will be returned as a thumbnail for media that is quarantined.
+  # The recommended size is at least 512x512.
   #thumbnailPath: "/path/to/thumbnail.png"
 
   # If true, administrators of the configured homeservers may quarantine media for their server
@@ -473,7 +517,7 @@ timeouts:
 
 # Prometheus metrics configuration
 # For an example Grafana dashboard, import the following JSON:
-# https://github.com/turt2live/matrix-media-repo/blob/master/docs/grafana.json
+# https://github.com/t2bot/matrix-media-repo/blob/main/docs/grafana.json
 metrics:
   # If true, the bindAddress and port below will serve GET /metrics for Prometheus to scrape.
   enabled: false
@@ -488,6 +532,9 @@ metrics:
 # Currently there are only antispam plugins, but in future there should be more options.
 # Plugins are not supported on per-domain paths and are instead repo-wide. For more
 # information on writing plugins, please visit #matrix-media-repo:t2bot.io on Matrix.
+#
+# Note: Using plugins will mean that your media repo's memory usage will be higher because
+# uploads are cached in-memory temporarily.
 plugins:
   - exec: /path/to/plugin/executable
     # Note: the exact config varies by plugin.
@@ -522,45 +569,7 @@ plugins:
 # Sections of this config might disappear or be added over time. By default all
 # features are disabled in here and must be explicitly enabled to be used.
 featureSupport:
-  # MSC2248 - Blurhash
-  MSC2448:
-    # Whether or not this MSC is enabled for use in the media repo
-    enabled: false
-
-    # Maximum dimensions for converting a blurhash to an image. When no width and
-    # height options are supplied, the default will be half these values.
-    maxWidth: 1024
-    maxHeight: 1024
-
-    # Thumbnail size in pixels to use to generate the blurhash string
-    thumbWidth: 64
-    thumbHeight: 64
-
-    # The X and Y components to use. Higher numbers blur less, lower numbers blur more.
-    xComponents: 4
-    yComponents: 3
-
-    # The amount of contrast to apply when converting a blurhash to an image. Lower values
-    # make the effect more subtle, larger values make it stronger.
-    punch: 1
-
-  # IPFS Support
-  # This is currently experimental and might not work at all.
-  IPFS:
-    # Whether or not IPFS support is enabled for use in the media repo.
-    enabled: false
-
-    # Options for the built in IPFS daemon
-    builtInDaemon:
-      # Enable this to spawn an in-process IPFS node to use instead of a localhost
-      # HTTP agent. If this is disabled, the media repo will assume you have an HTTP
-      # IPFS agent running and accessible. Defaults to using a daemon (true).
-      enabled: true
-
-      # If the Daemon is enabled, set this to the location where the IPFS files should
-      # be stored. If you're using Docker, this should be something like "/data/ipfs"
-      # so it can be mapped to a volume.
-      repoPath: "./ipfs"
+  # No unstable features are currently supported.
 
 # Support for redis as a cache mechanism
 #
@@ -598,3 +607,27 @@ sentry:
 
   # Whether or not to turn on sentry's built in debugging. This will increase log output.
   debug: false
+
+# Configuration for the internal tasks engine in the media repo. Note that this only applies
+# to the media repo process with machine ID zero (the default in single-instance mode).
+#
+# Tasks include things like data imports/exports.
+tasks:
+  # The number of workers to have available for tasks. Defaults to 5.
+  numWorkers: 5
+
+# Options for collecting PGO-compatible CPU profiles and submitting them to a hosted pgo-fleet
+# server. See https://github.com/t2bot/pgo-fleet for collection/more detail.
+#
+# If you process more than 1Hz of requests or have more than a dozen media repos deployed, please
+# get in contact with `@travis:t2l.io` to submit profiles directly to MMR. Submitted profiles are
+# used to improve the build speed for everyone.
+pgo:
+  # Whether collection is enabled. Defaults to false.
+  enabled: false
+
+  # The pgo-fleet submit URL.
+  submitUrl: "https://pgo-mmr.t2host.io/v1/submit"
+
+  # The pgo-fleet submit key.
+  submitKey: "INSERT_VALUE_HERE"

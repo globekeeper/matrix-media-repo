@@ -23,6 +23,8 @@ func NewDefaultMinimumRepoConfig() MinimumRepoConfig {
 			MaxSizeBytes:         104857600, // 100mb
 			MinSizeBytes:         100,
 			ReportedMaxSizeBytes: 0,
+			MaxPending:           5,
+			MaxAgeSeconds:        1800, // 30 minutes
 			Quota: QuotasConfig{
 				Enabled:    false,
 				UserQuotas: []QuotaUserConfig{},
@@ -42,25 +44,7 @@ func NewDefaultMinimumRepoConfig() MinimumRepoConfig {
 			ClientServer: 30,
 			Federation:   120,
 		},
-		Features: FeatureConfig{
-			MSC2448Blurhash: MSC2448Config{
-				Enabled:         false,
-				MaxRenderWidth:  1024,
-				MaxRenderHeight: 1024,
-				GenerateWidth:   64,
-				GenerateHeight:  64,
-				XComponents:     4,
-				YComponents:     3,
-				Punch:           1,
-			},
-			IPFS: IPFSConfig{
-				Enabled: false,
-				Daemon: IPFSDaemonConfig{
-					Enabled:  true,
-					RepoPath: "./ipfs",
-				},
-			},
-		},
+		Features: FeatureConfig{},
 		AccessTokens: AccessTokenConfig{
 			MaxCacheTimeSeconds: 0,
 			UseAppservices:      false,

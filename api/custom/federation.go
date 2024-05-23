@@ -2,21 +2,24 @@ package custom
 
 import (
 	"encoding/json"
-	"github.com/getsentry/sentry-go"
-	"io/ioutil"
 	"net/http"
 
-	"github.com/gorilla/mux"
+	"github.com/getsentry/sentry-go"
+	"github.com/t2bot/matrix-media-repo/api/_apimeta"
+	"github.com/t2bot/matrix-media-repo/api/_responses"
+	"github.com/t2bot/matrix-media-repo/api/_routers"
+
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/api"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
-	"github.com/turt2live/matrix-media-repo/matrix"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/matrix"
 )
 
-func GetFederationInfo(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
-	params := mux.Vars(r)
+func GetFederationInfo(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
+	serverName := _routers.GetParam("serverName", r)
 
-	serverName := params["serverName"]
+	if !_routers.ServerNameRegex.MatchString(serverName) {
+		return _responses.BadRequest("invalid server name")
+	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"serverName": serverName,
@@ -26,7 +29,7 @@ func GetFederationInfo(r *http.Request, rctx rcontext.RequestContext, user api.U
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError(err.Error())
+		return _responses.InternalServerError(err.Error())
 	}
 
 	versionUrl := url + "/_matrix/federation/v1/version"
@@ -34,27 +37,21 @@ func GetFederationInfo(r *http.Request, rctx rcontext.RequestContext, user api.U
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError(err.Error())
+		return _responses.InternalServerError(err.Error())
 	}
 
-	c, err := ioutil.ReadAll(versionResponse.Body)
-	if err != nil {
-		rctx.Log.Error(err)
-		sentry.CaptureException(err)
-		return api.InternalServerError(err.Error())
-	}
-
+	decoder := json.NewDecoder(versionResponse.Body)
 	out := make(map[string]interface{})
-	err = json.Unmarshal(c, &out)
+	err = decoder.Decode(&out)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError(err.Error())
+		return _responses.InternalServerError(err.Error())
 	}
 
 	resp := make(map[string]interface{})
 	resp["base_url"] = url
 	resp["hostname"] = hostname
 	resp["versions_response"] = out
-	return &api.DoNotCacheResponse{Payload: resp}
+	return &_responses.DoNotCacheResponse{Payload: resp}
 }

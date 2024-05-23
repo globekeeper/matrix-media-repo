@@ -2,23 +2,21 @@ package plugins
 
 import (
 	"encoding/base64"
+	"io"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/common/config"
-	"github.com/turt2live/matrix-media-repo/plugins/plugin_interfaces"
+	"github.com/t2bot/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/plugins/plugin_interfaces"
 )
 
 var pluginTypes = map[string]plugin.Plugin{
 	"antispam": &plugin_interfaces.AntispamPlugin{},
 }
 
-
 var existingPlugins = make([]*mmrPlugin, 0)
 
 func ReloadPlugins() {
-	logrus.Info("Reloading plugins...")
-
 	for _, pl := range config.Get().Plugins {
 		logrus.Info("Loading plugin: ", pl.Executable)
 		mmr, err := newPlugin(pl.Executable, pl.Config)
@@ -43,7 +41,8 @@ func StopPlugins() {
 	existingPlugins = make([]*mmrPlugin, 0)
 }
 
-func CheckForSpam(contents []byte, filename string, contentType string, userId string, origin string, mediaId string) (bool, error) {
+func CheckForSpam(r io.Reader, filename string, contentType string, userId string, origin string, mediaId string) (bool, error) {
+	b := make([]byte, 0)
 	for _, pl := range existingPlugins {
 		as, err := pl.Antispam()
 		if err != nil {
@@ -51,7 +50,14 @@ func CheckForSpam(contents []byte, filename string, contentType string, userId s
 			continue
 		}
 
-		b64 := base64.StdEncoding.EncodeToString(contents)
+		if len(b) == 0 {
+			b, err = io.ReadAll(r)
+			if err != nil {
+				return false, err
+			}
+		}
+
+		b64 := base64.StdEncoding.EncodeToString(b)
 		spam, err := as.CheckForSpam(b64, filename, contentType, userId, origin, mediaId)
 		if err != nil {
 			return false, err

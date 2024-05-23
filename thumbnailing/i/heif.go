@@ -1,41 +1,41 @@
 package i
 
 import (
-	"bytes"
 	"errors"
-	"github.com/jdeng/goheif"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
-	"github.com/turt2live/matrix-media-repo/thumbnailing/m"
+	"image"
+	"io"
+
+	_ "github.com/strukturag/libheif/go/heif"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/thumbnailing/m"
+	"github.com/t2bot/matrix-media-repo/util"
 )
 
 type heifGenerator struct {
 }
 
 func (d heifGenerator) supportedContentTypes() []string {
-	return []string{"image/heif"}
+	return []string{"image/heif", "image/heic"}
 }
 
 func (d heifGenerator) supportsAnimation() bool {
 	return true
 }
 
-func (d heifGenerator) matches(img []byte, contentType string) bool {
-	return contentType == "image/heif"
+func (d heifGenerator) matches(img io.Reader, contentType string) bool {
+	return util.ArrayContains(d.supportedContentTypes(), contentType)
 }
 
-func (d heifGenerator) GetOriginDimensions(b []byte, contentType string, ctx rcontext.RequestContext) (bool, int, int, error) {
-	i, err := goheif.DecodeConfig(bytes.NewBuffer(b))
+func (d heifGenerator) GetOriginDimensions(b io.Reader, contentType string, ctx rcontext.RequestContext) (bool, int, int, error) {
+	cfg, _, err := image.DecodeConfig(b)
 	if err != nil {
 		return false, 0, 0, err
 	}
-	return true, i.Width, i.Height, nil
+	return true, cfg.Width, cfg.Height, nil
 }
 
-func (d heifGenerator) GenerateThumbnail(b []byte, contentType string, width int, height int, method string, animated bool, ctx rcontext.RequestContext) (*m.Thumbnail, error) {
-	// Use more memory, but prevent crashes
-	goheif.SafeEncoding = true
-
-	src, err := goheif.Decode(bytes.NewBuffer(b))
+func (d heifGenerator) GenerateThumbnail(b io.Reader, contentType string, width int, height int, method string, animated bool, ctx rcontext.RequestContext) (*m.Thumbnail, error) {
+	src, _, err := image.Decode(b)
 	if err != nil {
 		return nil, errors.New("heif: error decoding thumbnail: " + err.Error())
 	}

@@ -2,60 +2,57 @@ package custom
 
 import (
 	"github.com/getsentry/sentry-go"
+	"github.com/t2bot/matrix-media-repo/api/_apimeta"
+	"github.com/t2bot/matrix-media-repo/api/_responses"
+	"github.com/t2bot/matrix-media-repo/api/_routers"
+	"github.com/t2bot/matrix-media-repo/common/config"
+	"github.com/t2bot/matrix-media-repo/datastores"
+	"github.com/t2bot/matrix-media-repo/tasks"
+
 	"net/http"
 	"strconv"
 
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
-	"github.com/turt2live/matrix-media-repo/api"
-	"github.com/turt2live/matrix-media-repo/common/rcontext"
-	"github.com/turt2live/matrix-media-repo/controllers/maintenance_controller"
-	"github.com/turt2live/matrix-media-repo/storage"
-	"github.com/turt2live/matrix-media-repo/storage/datastore"
-	"github.com/turt2live/matrix-media-repo/types"
-	"github.com/turt2live/matrix-media-repo/util"
+	"github.com/t2bot/matrix-media-repo/common/rcontext"
+	"github.com/t2bot/matrix-media-repo/util"
 )
 
 type DatastoreMigration struct {
-	*types.DatastoreMigrationEstimate
+	*datastores.SizeEstimate
 	TaskID int `json:"task_id"`
 }
 
-func GetDatastores(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
-	datastores, err := storage.GetDatabase().GetMediaStore(rctx).GetAllDatastores()
-	if err != nil {
-		rctx.Log.Error(err)
-		sentry.CaptureException(err)
-		return api.InternalServerError("Error getting datastores")
-	}
-
+func GetDatastores(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	response := make(map[string]interface{})
-
-	for _, ds := range datastores {
+	for _, ds := range config.UniqueDatastores() {
+		uri, err := datastores.GetUri(ds)
+		if err != nil {
+			sentry.CaptureException(err)
+			rctx.Log.Error("Error getting datastore URI: ", err)
+			return _responses.InternalServerError("unexpected error getting datastore information")
+		}
 		dsMap := make(map[string]interface{})
 		dsMap["type"] = ds.Type
-		dsMap["uri"] = ds.Uri
-		response[ds.DatastoreId] = dsMap
+		dsMap["uri"] = uri
+		response[ds.Id] = dsMap
 	}
 
-	return &api.DoNotCacheResponse{Payload: response}
+	return &_responses.DoNotCacheResponse{Payload: response}
 }
 
-func MigrateBetweenDatastores(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func MigrateBetweenDatastores(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	beforeTsStr := r.URL.Query().Get("before_ts")
 	beforeTs := util.NowMillis()
 	var err error
 	if beforeTsStr != "" {
 		beforeTs, err = strconv.ParseInt(beforeTsStr, 10, 64)
 		if err != nil {
-			return api.BadRequest("Error parsing before_ts: " + err.Error())
+			return _responses.BadRequest("Error parsing before_ts: " + err.Error())
 		}
 	}
 
-	params := mux.Vars(r)
-
-	sourceDsId := params["sourceDsId"]
-	targetDsId := params["targetDsId"]
+	sourceDsId := _routers.GetParam("sourceDsId", r)
+	targetDsId := _routers.GetParam("targetDsId", r)
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"beforeTs":   beforeTs,
@@ -64,69 +61,61 @@ func MigrateBetweenDatastores(r *http.Request, rctx rcontext.RequestContext, use
 	})
 
 	if sourceDsId == targetDsId {
-		return api.BadRequest("Source and target datastore cannot be the same")
+		return _responses.BadRequest("Source and target datastore cannot be the same")
+	}
+	if _, ok := datastores.Get(rctx, sourceDsId); !ok {
+		return _responses.BadRequest("Source datastore does not appear to exist")
+	}
+	if _, ok := datastores.Get(rctx, targetDsId); !ok {
+		return _responses.BadRequest("Target datastore does not appear to exist")
 	}
 
-	sourceDatastore, err := datastore.LocateDatastore(rctx, sourceDsId)
-	if err != nil {
-		rctx.Log.Error(err)
-		return api.BadRequest("Error getting source datastore. Does it exist?")
-	}
-
-	targetDatastore, err := datastore.LocateDatastore(rctx, targetDsId)
-	if err != nil {
-		rctx.Log.Error(err)
-		return api.BadRequest("Error getting target datastore. Does it exist?")
-	}
-
-	rctx.Log.Info("User ", user.UserId, " has started a datastore media transfer")
-	task, err := maintenance_controller.StartStorageMigration(sourceDatastore, targetDatastore, beforeTs, rctx)
+	estimate, err := datastores.SizeOfDsIdWithAge(rctx, sourceDsId, beforeTs)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("Unexpected error starting migration")
+		return _responses.InternalServerError("Unexpected error getting storage estimate")
 	}
 
-	estimate, err := maintenance_controller.EstimateDatastoreSizeWithAge(beforeTs, sourceDsId, rctx)
+	rctx.Log.Infof("User %s has started a datastore media transfer", user.UserId)
+	task, err := tasks.RunDatastoreMigration(rctx, sourceDsId, targetDsId, beforeTs)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("Unexpected error getting storage estimate")
+		return _responses.InternalServerError("Unexpected error starting migration")
 	}
 
 	migration := &DatastoreMigration{
-		DatastoreMigrationEstimate: estimate,
-		TaskID:                     task.ID,
+		SizeEstimate: estimate,
+		TaskID:       task.TaskId,
 	}
 
-	return &api.DoNotCacheResponse{Payload: migration}
+	return &_responses.DoNotCacheResponse{Payload: migration}
 }
 
-func GetDatastoreStorageEstimate(r *http.Request, rctx rcontext.RequestContext, user api.UserInfo) interface{} {
+func GetDatastoreStorageEstimate(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	beforeTsStr := r.URL.Query().Get("before_ts")
 	beforeTs := util.NowMillis()
 	var err error
 	if beforeTsStr != "" {
 		beforeTs, err = strconv.ParseInt(beforeTsStr, 10, 64)
 		if err != nil {
-			return api.BadRequest("Error parsing before_ts: " + err.Error())
+			return _responses.BadRequest("Error parsing before_ts: " + err.Error())
 		}
 	}
 
-	params := mux.Vars(r)
-
-	datastoreId := params["datastoreId"]
+	datastoreId := _routers.GetParam("datastoreId", r)
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"beforeTs":    beforeTs,
 		"datastoreId": datastoreId,
 	})
 
-	result, err := maintenance_controller.EstimateDatastoreSizeWithAge(beforeTs, datastoreId, rctx)
+	result, err := datastores.SizeOfDsIdWithAge(rctx, datastoreId, beforeTs)
 	if err != nil {
 		rctx.Log.Error(err)
 		sentry.CaptureException(err)
-		return api.InternalServerError("Unexpected error getting storage estimate")
+		return _responses.InternalServerError("Unexpected error getting storage estimate")
 	}
-	return &api.DoNotCacheResponse{Payload: result}
+	return &_responses.DoNotCacheResponse{Payload: result}
 }
