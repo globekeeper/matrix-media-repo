@@ -1,11 +1,14 @@
 package r0
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/h2non/filetype"
 	"github.com/sirupsen/logrus"
 	"github.com/t2bot/matrix-media-repo/api/_apimeta"
 	"github.com/t2bot/matrix-media-repo/api/_responses"
@@ -13,12 +16,47 @@ import (
 	"github.com/t2bot/matrix-media-repo/common"
 	"github.com/t2bot/matrix-media-repo/common/rcontext"
 	"github.com/t2bot/matrix-media-repo/pipelines/pipeline_upload"
+	"github.com/t2bot/matrix-media-repo/util"
 )
 
 func UploadMediaAsync(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	server := _routers.GetParam("server", r)
 	mediaId := _routers.GetParam("mediaId", r)
 	filename := filepath.Base(r.URL.Query().Get("filename"))
+	// GK CUSTOMIZATION: Sanitize the filename
+	if len(filename) > 24 {
+		return &_responses.ErrorResponse{
+			Code:         common.ErrCodeBadRequest,
+			Message:      "Filename too long.",
+			InternalCode: common.ErrCodeBadRequest,
+		}
+	}
+
+	// GK CUSTOMIZATION: Check if the file type is supported
+	buf, err := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewBuffer(buf))
+	if err != nil {
+		return &_responses.ErrorResponse{
+			Code:         common.ErrCodeBadRequest,
+			Message:      "Error reading file.",
+			InternalCode: common.ErrCodeBadRequest,
+		}
+	}
+	kind, err := filetype.Match(buf)
+	if err != nil {
+		return &_responses.ErrorResponse{
+			Code:         common.ErrCodeBadRequest,
+			Message:      "Error matching file type.",
+			InternalCode: common.ErrCodeBadRequest,
+		}
+	}
+	if !util.IsSupportedFileType(kind.Extension) {
+		return &_responses.ErrorResponse{
+			Code:         common.ErrCodeBadRequest,
+			Message:      "Unsupported file type.",
+			InternalCode: common.ErrCodeBadRequest,
+		}
+	}
 
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"mediaId":  mediaId,
@@ -45,7 +83,7 @@ func UploadMediaAsync(r *http.Request, rctx rcontext.RequestContext, user _apime
 	}
 
 	// Actually upload
-	_, err := pipeline_upload.ExecutePut(rctx, server, mediaId, r.Body, contentType, filename, user.UserId)
+	_, err = pipeline_upload.ExecutePut(rctx, server, mediaId, r.Body, contentType, filename, user.UserId)
 	if err != nil {
 		if errors.Is(err, common.ErrQuotaExceeded) {
 			return _responses.QuotaExceeded()
