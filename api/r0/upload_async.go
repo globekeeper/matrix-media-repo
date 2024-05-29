@@ -38,30 +38,35 @@ func UploadMediaAsync(r *http.Request, rctx rcontext.RequestContext, user _apime
 		}
 	}
 
-	// GK CUSTOMIZATION: Check if the file type is supported
-	buf, err := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(bytes.NewBuffer(buf))
-	if err != nil {
-		return &_responses.ErrorResponse{
-			Code:         common.ErrCodeBadRequest,
-			Message:      "Error reading file.",
-			InternalCode: common.ErrCodeBadRequest,
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream" // binary
+	} else {
+		// GK CUSTOMIZATION: Check if the file type is supported
+		buf, err := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewBuffer(buf))
+		if err != nil {
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Error reading file.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
 		}
-	}
-	kind, err := filetype.Match(buf)
-	if err != nil {
-		return &_responses.ErrorResponse{
-			Code:         common.ErrCodeBadRequest,
-			Message:      "Error matching file type.",
-			InternalCode: common.ErrCodeBadRequest,
+		kind, err := filetype.Match(buf)
+		if err != nil {
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Error matching file type.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
 		}
-	}
-	if !util.IsSupportedFileType(kind.Extension, rctx.Config.Uploads.SupportedFileTypes) {
-		rctx.Log.Info("Unsupported file type: ", kind.Extension)
-		return &_responses.ErrorResponse{
-			Code:         common.ErrCodeBadRequest,
-			Message:      "Unsupported file type.",
-			InternalCode: common.ErrCodeBadRequest,
+		if !util.IsSupportedFileType(kind.Extension, rctx.Config.Uploads.SupportedFileTypes) {
+			rctx.Log.Info("Unsupported file type: ", kind.Extension)
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Unsupported file type.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
 		}
 	}
 
@@ -73,18 +78,13 @@ func UploadMediaAsync(r *http.Request, rctx rcontext.RequestContext, user _apime
 		}
 	}
 
-	contentType := r.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream" // binary
-	}
-
 	// Early sizing constraints (reject requests which claim to be too large/small)
 	if sizeRes := uploadRequestSizeCheck(rctx, r); sizeRes != nil {
 		return sizeRes
 	}
 
 	// Actually upload
-	_, err = pipeline_upload.ExecutePut(rctx, server, mediaId, r.Body, contentType, filename, user.UserId)
+	_, err := pipeline_upload.ExecutePut(rctx, server, mediaId, r.Body, contentType, filename, user.UserId)
 	if err != nil {
 		if errors.Is(err, common.ErrQuotaExceeded) {
 			return _responses.QuotaExceeded()
