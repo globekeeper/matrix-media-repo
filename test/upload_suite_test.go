@@ -45,10 +45,10 @@ func (s *UploadTestSuite) TestUpload() {
 
 	client1 := s.deps.Homeservers[0].UnprivilegedUsers[0].WithCsUrl(s.deps.Machines[0].HttpUrl)
 	client2 := &test_internals.MatrixClient{
-		ClientServerUrl: s.deps.Machines[1].HttpUrl,       // deliberately the second machine
-		ServerName:      s.deps.Homeservers[1].ServerName, // deliberately the second machine
-		AccessToken:     "",                               // no auth for downloads
-		UserId:          "",                               // no auth for downloads
+		ClientServerUrl: s.deps.Machines[1].HttpUrl,                             // deliberately the second machine
+		ServerName:      s.deps.Homeservers[1].ServerName,                       // deliberately the second machine
+		AccessToken:     s.deps.Homeservers[1].UnprivilegedUsers[0].AccessToken, // GK CUSTOMIZATION: auth for downloads
+		UserId:          s.deps.Homeservers[1].UnprivilegedUsers[0].UserId,      // GK CUSTOMIZATION: auth for downloads
 	}
 
 	contentType, img, err := test_internals.MakeTestImage(512, 512)
@@ -256,10 +256,10 @@ func (s *UploadTestSuite) TestUploadAsyncFlow() {
 
 	client1 := s.deps.Homeservers[0].UnprivilegedUsers[0].WithCsUrl(s.deps.Machines[0].HttpUrl)
 	client2 := &test_internals.MatrixClient{
-		ClientServerUrl: s.deps.Machines[1].HttpUrl,       // deliberately the second machine
-		ServerName:      s.deps.Homeservers[1].ServerName, // deliberately the second machine
-		AccessToken:     "",                               // no auth for downloads
-		UserId:          "",                               // no auth for downloads
+		ClientServerUrl: s.deps.Machines[1].HttpUrl,                             // deliberately the second machine
+		ServerName:      s.deps.Homeservers[1].ServerName,                       // deliberately the second machine
+		AccessToken:     s.deps.Homeservers[1].UnprivilegedUsers[0].AccessToken, // GK CUSTOMIZATION: auth for downloads
+		UserId:          s.deps.Homeservers[1].UnprivilegedUsers[0].UserId,      // GK CUSTOMIZATION: auth for downloads
 	}
 
 	contentType, img, err := test_internals.MakeTestImage(512, 512)
