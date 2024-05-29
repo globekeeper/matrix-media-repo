@@ -26,8 +26,12 @@ type MediaUploadedResponse struct {
 
 func UploadMediaSync(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	filename := filepath.Base(r.URL.Query().Get("filename"))
+	rctx = rctx.LogWithFields(logrus.Fields{
+		"filename": filename,
+	})
 	// GK CUSTOMIZATION: Sanitize the filename
-	if len(filename) > 24 {
+	if len(filename) > rctx.Config.Uploads.MaxFilenameLength {
+		rctx.Log.Info("Filename too long")
 		return &_responses.ErrorResponse{
 			Code:         common.ErrCodeBadRequest,
 			Message:      "Filename too long.",
@@ -53,17 +57,14 @@ func UploadMediaSync(r *http.Request, rctx rcontext.RequestContext, user _apimet
 			InternalCode: common.ErrCodeBadRequest,
 		}
 	}
-	if !util.IsSupportedFileType(kind.Extension) {
+	if !util.IsSupportedFileType(kind.Extension, rctx.Config.Uploads.SupportedFileTypes) {
+		rctx.Log.Info("Unsupported file type: ", kind.Extension)
 		return &_responses.ErrorResponse{
 			Code:         common.ErrCodeBadRequest,
 			Message:      "Unsupported file type.",
 			InternalCode: common.ErrCodeBadRequest,
 		}
 	}
-
-	rctx = rctx.LogWithFields(logrus.Fields{
-		"filename": filename,
-	})
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {

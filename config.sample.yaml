@@ -232,6 +232,42 @@ archiving:
 
 # The file upload settings for the media repository
 uploads:
+  # GK CUSTOMIZATION
+  maxFilenameLength: 24
+  supportedFileTypes:
+  - "docx"
+  - "doc"
+  - "xlsx"
+  - "xls"
+  - "odt"
+  - "ods"
+  - "odp"
+  - "csv"
+  - "txt"
+  - "pdf"
+  - "ppr"
+  - "pptx"
+  - "ppt"
+  - "jpg"
+  - "png"
+  - "gif"
+  - "heic"
+  - "bmp"
+  - "webp"
+  - "svg"
+  - "mpeg4"
+  - "mpeg"
+  - "h264"
+  - "webm"
+  - "mkv"
+  - "avi"
+  - "mov"
+  - "mp3"
+  - "wav"
+  - "flac"
+  - "zip"
+  ################## 
+
   # The maximum individual file size a user can upload.
   maxBytes: 104857600 # 100MB default, 0 to disable
 

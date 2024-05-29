@@ -19,6 +19,8 @@ type QuotasConfig struct {
 }
 
 type UploadsConfig struct {
+	MaxFilenameLength    int          `yaml:"maxFilenameLength"`
+	SupportedFileTypes   []string     `yaml:"supportedFileTypes"`
 	MaxSizeBytes         int64        `yaml:"maxBytes"`
 	MinSizeBytes         int64        `yaml:"minBytes"`
 	ReportedMaxSizeBytes int64        `yaml:"reportedMaxBytes"`
