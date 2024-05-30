@@ -45,10 +45,10 @@ func (s *UploadTestSuite) TestUpload() {
 
 	client1 := s.deps.Homeservers[0].UnprivilegedUsers[0].WithCsUrl(s.deps.Machines[0].HttpUrl)
 	client2 := &test_internals.MatrixClient{
-		ClientServerUrl: s.deps.Machines[1].HttpUrl,       // deliberately the second machine
-		ServerName:      s.deps.Homeservers[1].ServerName, // deliberately the second machine
-		AccessToken:     "",                               // no auth for downloads
-		UserId:          "",                               // no auth for downloads
+		ClientServerUrl: s.deps.Machines[1].HttpUrl,                             // deliberately the second machine
+		ServerName:      s.deps.Homeservers[1].ServerName,                       // deliberately the second machine
+		AccessToken:     s.deps.Homeservers[1].UnprivilegedUsers[0].AccessToken, // GK CUSTOMIZATION: auth for downloads
+		UserId:          s.deps.Homeservers[1].UnprivilegedUsers[0].UserId,      // GK CUSTOMIZATION: auth for downloads
 	}
 
 	contentType, img, err := test_internals.MakeTestImage(512, 512)
@@ -111,7 +111,7 @@ func (s *UploadTestSuite) TestUploadDeduplicationSameUserDifferentMetadata() {
 
 	contentType, img, err = test_internals.MakeTestImage(512, 512)
 	assert.NoError(t, err)
-	res2, err := client1.Upload("DIFFERENT_FILE_NAME_SHOULD_GIVE_DIFFERENT_MEDIA_ID"+util.ExtensionForContentType(contentType), contentType, img)
+	res2, err := client1.Upload("DIFFNAMEDIFFMEDIA"+util.ExtensionForContentType(contentType), contentType, img)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, res2.MxcUri)
 
@@ -213,9 +213,9 @@ func (s *UploadTestSuite) TestUploadSpam() {
 			waiter.Wait()
 
 			// We use random file names to guarantee different media IDs at a minimum
-			rstr, err := util.GenerateRandomString(64)
+			rstr, err := util.RandStringN(12)
 			assert.NoError(t, err)
-			res, err := client.Upload("image"+rstr+util.ExtensionForContentType(contentType), contentType, img)
+			res, err := client.Upload(rstr+util.ExtensionForContentType(contentType), contentType, img)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, res.MxcUri)
 
@@ -256,10 +256,10 @@ func (s *UploadTestSuite) TestUploadAsyncFlow() {
 
 	client1 := s.deps.Homeservers[0].UnprivilegedUsers[0].WithCsUrl(s.deps.Machines[0].HttpUrl)
 	client2 := &test_internals.MatrixClient{
-		ClientServerUrl: s.deps.Machines[1].HttpUrl,       // deliberately the second machine
-		ServerName:      s.deps.Homeservers[1].ServerName, // deliberately the second machine
-		AccessToken:     "",                               // no auth for downloads
-		UserId:          "",                               // no auth for downloads
+		ClientServerUrl: s.deps.Machines[1].HttpUrl,                             // deliberately the second machine
+		ServerName:      s.deps.Homeservers[1].ServerName,                       // deliberately the second machine
+		AccessToken:     s.deps.Homeservers[1].UnprivilegedUsers[0].AccessToken, // GK CUSTOMIZATION: auth for downloads
+		UserId:          s.deps.Homeservers[1].UnprivilegedUsers[0].UserId,      // GK CUSTOMIZATION: auth for downloads
 	}
 
 	contentType, img, err := test_internals.MakeTestImage(512, 512)

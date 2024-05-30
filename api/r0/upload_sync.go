@@ -1,12 +1,15 @@
 package r0
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/h2non/filetype"
 	"github.com/sirupsen/logrus"
 	"github.com/t2bot/matrix-media-repo/api/_apimeta"
 	"github.com/t2bot/matrix-media-repo/api/_responses"
@@ -23,14 +26,50 @@ type MediaUploadedResponse struct {
 
 func UploadMediaSync(r *http.Request, rctx rcontext.RequestContext, user _apimeta.UserInfo) interface{} {
 	filename := filepath.Base(r.URL.Query().Get("filename"))
-
 	rctx = rctx.LogWithFields(logrus.Fields{
 		"filename": filename,
 	})
+	// GK CUSTOMIZATION: Sanitize the filename
+	if len(filename) > rctx.Config.Uploads.MaxFilenameLength {
+		rctx.Log.Info("Filename too long")
+		return &_responses.ErrorResponse{
+			Code:         common.ErrCodeBadRequest,
+			Message:      "Filename too long.",
+			InternalCode: common.ErrCodeBadRequest,
+		}
+	}
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream" // binary
+	} else {
+		// GK CUSTOMIZATION: Check if the file type is supported
+		buf, err := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewBuffer(buf))
+		if err != nil {
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Error reading file.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
+		}
+		kind, err := filetype.Match(buf)
+		if err != nil {
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Error matching file type.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
+		}
+		if !util.IsSupportedFileType(kind.Extension, rctx.Config.Uploads.SupportedFileTypes) {
+			rctx.Log.Info("Unsupported file type: ", kind.Extension)
+			return &_responses.ErrorResponse{
+				Code:         common.ErrCodeBadRequest,
+				Message:      "Unsupported file type.",
+				InternalCode: common.ErrCodeBadRequest,
+			}
+		}
+		//
 	}
 
 	// Early sizing constraints (reject requests which claim to be too large/small)
