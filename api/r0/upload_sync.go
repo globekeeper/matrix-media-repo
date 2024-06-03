@@ -40,7 +40,7 @@ func UploadMediaSync(r *http.Request, rctx rcontext.RequestContext, user _apimet
 	}
 
 	contentType := r.Header.Get("Content-Type")
-	if contentType == "" {
+	if contentType == "" || contentType == "application/octet-stream" {
 		contentType = "application/octet-stream" // binary
 	} else {
 		// GK CUSTOMIZATION: Check if the file type is supported
